@@ -1,0 +1,434 @@
+---
+title: "IVD_Figure3_Plots"
+author: "HuangFei"
+date: "2021/1/26"
+output: html_document
+---
+
+## load dependence
+```{r,warning=FALSE}
+need_pkgs <- c('Seurat','cowplot', 'slingshot','ggpubr',
+               'data.table', 'reticulate','ggplot2')
+
+for(i in need_pkgs){
+  #if(!require(i, character.only = T)) {
+   # install.packages(i)
+    require(i, quietly = T, character.only = T)
+   # } 
+}
+```
+
+```{r,echo=FALSE}
+library(ggplot2)
+my_theme <- theme(plot.title = element_text(hjust = 0.5, size = 20),
+                  #legend.position = 'right',
+                  legend.title =element_text(size=15),
+                  legend.text = element_text(size=15),
+                  axis.text.x = element_text(size=15),
+                  axis.title.x = element_text(size=15),
+                  axis.title.y = element_text(size=15),
+                  axis.text.y  = element_text(size=15),
+                  panel.border = element_blank(),
+                  axis.line.x = element_line(size=0.25, color="black"),
+                  axis.line.y = element_line(size=0.25, color="black"),
+                  panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank(),
+                  panel.grid.major.x = element_blank(), panel.grid.major.y = element_blank(),
+                  panel.background = element_rect(fill='white'),
+                  legend.key=element_blank(),
+                  strip.text.x = element_text(size=15),
+                  strip.text.y = element_text(size=15),
+                  strip.background = element_rect(colour = 'white', fill = 'white'))
+```
+
+## obtain GO term genes based on GO IDs
+```{r}
+#GO_DATA <- get_GO_data("org.Hs.eg.db", "BP", "SYMBOL")
+load('~/Project/DataBase/Gene_Marker/GO_BP_database.RData')
+stress_genes = c(unlist(GO_DATA$PATHID2EXTID['GO:0097533']),
+                 unlist(GO_DATA$PATHID2EXTID['GO:1990451']))
+length(stress_genes)
+
+glycolysis = unlist(GO_DATA$PATHID2EXTID['GO:0061621'])
+length(glycolysis)
+
+ER_stress = unlist(GO_DATA$PATHID2EXTID['GO:0034976'])
+length(ER_stress)
+
+apop_genes = unlist(GO_DATA$PATHID2EXTID['GO:0097194'])
+length(apop_genes)
+
+hypoxiaGO = GO_DATA$PATHID2NAME[grep("response to hypoxia", GO_DATA$PATHID2NAME)]
+hypoxiaGO[1]
+hypoxia = unlist(GO_DATA$PATHID2EXTID['GO:0001666'])
+length(hypoxia)
+```
+
+
+
+```{r}
+load('~/Project/Organoid/result/rdata/Mutiple_organoid_EN_and_RGC_matrix.RData')
+SC_organoid = readRDS('~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_Seurat_obj.rds')
+
+meta = SC_organoid@meta.data
+
+RG_cells = rownames(meta[grep('RG|AS',meta$CellType),])
+IVD.RG_mat = SC_organoid[,RG_cells]@assays$RNA@data
+dim(IVD.RG_mat)
+
+EN_cells = rownames(meta[grep('Neuron',meta$CellType),])
+IVD.EN_mat = SC_organoid[,EN_cells]@assays$RNA@data
+dim(IVD.EN_mat)
+
+plot.colors = pal_jama()(5)[-1]
+```
+
+
+### Apoptosis (GO:0097194) 
+```{r}
+library(msigdbr)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+m_df <- msigdbr(species = "Homo sapiens")
+head(m_df, 6) %>% as.data.frame
+
+m_t2g <- msigdbr(species = "Homo sapiens", category = "H") %>% 
+  dplyr::select(gs_name, entrez_gene)
+head(m_t2g)
+unique(m_t2g$gs_name)
+
+m_t2g$gene_name = mapIds(org.Hs.eg.db,
+                                  keys = as.character(m_t2g$entrez_gene),
+                                  keytype = 'ENTREZID', column = 'SYMBOL')
+
+Apoptosis_gene = m_t2g[m_t2g$gs_name=='HALLMARK_APOPTOSIS',]
+nrow(Apoptosis_gene)
+#apop_genes = Apoptosis_gene$gene_name
+#length(apop_genes)
+Hall_apoptosis = Apoptosis_gene$gene_name
+Hall_glycolysis = m_t2g[m_t2g$gs_name=='HALLMARK_GLYCOLYSIS',]$gene_name
+
+Hall_hypoxia = m_t2g[m_t2g$gs_name=='HALLMARK_HYPOXIA',]$gene_name
+
+```
+
+### Apoptosis in RGC
+```{r,fig.width=7.5,fig.height=5}
+mats = ls(pattern = 'RG_mat')[-c(4,5)]
+pools = data.frame(DataSet = gsub('.RG_mat','',mats), Mat = mats)
+pools
+
+
+apop2plot = do.call(rbind, lapply(1:nrow(pools), function(i){
+  RG_mat = eval(parse(text = pools$Mat[i]))
+  apop_mat = RG_mat[rownames(RG_mat)%in%apop_genes,]
+  apop_aver = as.numeric(apply(apop_mat,2,mean))
+  names(apop_aver) = colnames(apop_mat)
+  out = data.table(Expression = apop_aver,
+                   cellID = names(apop_aver),
+                   DataSet = pools$DataSet[i])
+  out
+}))
+
+table(apop2plot$DataSet)
+
+#comparison = gtools::combinations(5,2,unique(apop2plot$DataSet))
+
+apop2plot[,DataSet:=paste0(DataSet,' et al.')]
+apop2plot[grep('IVD',DataSet)]$DataSet = 'IVD-organoids'
+
+apop2plot[,DataSet:=factor(DataSet, levels = c('Bhaduri et al.',
+                                               'Giandomenico et al.','Velasco et al.','IVD-organoids'))]
+
+comparison_list = list()
+for(i in unique(apop2plot$DataSet)[-3]){
+  comparison_list[[i]] = c('IVD-organoids',i)
+}
+
+#apop2plot[,Source:=factor(Source, levels = c('Primary\n(Bhaduri)','hCO\n(Bhaduri)',
+#                                               'hCO\n(Giandomenico)','hCO\n(Velasco)','IVD-organoid'))]
+
+
+apoptosis = ggpubr::ggviolin(apop2plot, x = 'DataSet', y = 'Expression',
+                 fill = 'DataSet', ylab = 'Relative expression',
+                 trim = T, title = 'Apoptosis signature',xlab = '')+
+  geom_boxplot(width=0.08, fill = '#DCDCDC', outlier.shape = NA)+
+ stat_compare_means(comparisons = comparison_list,
+                                label = 'p.signif') + 
+  my_theme + theme(legend.position = 'none',axis.text.x = element_text(size=16,angle = 40,vjust = 0.9,hjust = 0.9)) + 
+  scale_fill_manual(values = plot.colors)
+
+apoptosis
+
+#pdf('~/Project/Organoid/figure/20200809/Integration/Apoptosis_signature_across_Arnold_hCO_vhCO_and_IVD.pdf',6,6)
+#all
+#dev.off()
+```
+
+
+
+### Hypoxia in RGC
+```{r,fig.width=6.5,fig.height=5}
+mats = ls(pattern = 'RG_mat')[-c(4,5)]
+pools = data.frame(DataSet = gsub('.RG_mat','',mats), Mat = mats)
+pools
+
+
+Hypoxia2plot = do.call(rbind, lapply(1:nrow(pools), function(i){
+  RG_mat = eval(parse(text = pools$Mat[i]))
+  apop_mat = RG_mat[rownames(RG_mat)%in%Hall_hypoxia,]
+  apop_aver = as.numeric(apply(apop_mat,2,mean))
+  names(apop_aver) = colnames(apop_mat)
+  out = data.table(Expression = apop_aver,
+                   cellID = names(apop_aver),
+                   DataSet = pools$DataSet[i])
+  out
+}))
+
+table(Hypoxia2plot$DataSet)
+
+#comparison = gtools::combinations(5,2,unique(apop2plot$DataSet))
+
+
+Hypoxia2plot[,DataSet:=paste0(DataSet,' et al.')]
+Hypoxia2plot[grep('IVD',DataSet)]$DataSet = 'IVD-organoids'
+
+Hypoxia2plot[,DataSet:=factor(DataSet, levels = c('Bhaduri et al.',
+                                               'Giandomenico et al.','Velasco et al.','IVD-organoids'))]
+
+comparison_list = list()
+for(i in unique(Hypoxia2plot$DataSet)[-3]){
+  comparison_list[[i]] = c('IVD-organoids',i)
+}
+
+#apop2plot[,Source:=factor(Source, levels = c('Primary\n(Bhaduri)','hCO\n(Bhaduri)',
+#                                               'hCO\n(Giandomenico)','hCO\n(Velasco)','IVD-organoid'))]
+
+
+Hypoxia = ggpubr::ggviolin(Hypoxia2plot, x = 'DataSet', y = 'Expression',
+                 fill = 'DataSet', ylab = 'Relative expression',
+                 trim = T, title = 'Hypoxia signature',xlab = '')+
+  geom_boxplot(width=0.08, fill = '#DCDCDC', outlier.shape = NA)+
+ stat_compare_means(comparisons = comparison_list,
+                                label = 'p.signif') + 
+  my_theme + theme(legend.position = 'none',axis.text.x = element_text(size=16,angle = 40,vjust = 0.9,hjust = 0.9)) + 
+  scale_fill_manual(values = plot.colors)
+
+Hypoxia
+
+#pdf('~/Project/Organoid/figure/20200809/Integration/Apoptosis_signature_across_Arnold_hCO_vhCO_and_IVD.pdf',6,6)
+#all
+#dev.off()
+```
+
+## Cellular stress: glycolysis and ER stress
+### Glycolysis (GO:0061621)
+```{r,fig.width=6.5,fig.height=5}
+mats = ls(pattern = 'RG_mat')[-c(4,5)]
+pools = data.frame(DataSet = gsub('.RG_mat','',mats), Mat = mats)
+pools
+
+
+Glycolysis2plot = do.call(rbind, lapply(1:nrow(pools), function(i){
+  RG_mat = eval(parse(text = pools$Mat[i]))
+  apop_mat = RG_mat[rownames(RG_mat)%in%Hall_glycolysis,]
+  apop_aver = as.numeric(apply(apop_mat,2,mean))
+  names(apop_aver) = colnames(apop_mat)
+  out = data.table(Expression = apop_aver,
+                   cellID = names(apop_aver),
+                   DataSet = pools$DataSet[i])
+  out
+}))
+
+table(Glycolysis2plot$DataSet)
+
+#comparison = gtools::combinations(5,2,unique(apop2plot$DataSet))
+
+Glycolysis2plot[,DataSet:=paste0(DataSet,' et al.')]
+Glycolysis2plot[grep('IVD',DataSet)]$DataSet = 'IVD-organoids'
+
+Glycolysis2plot[,DataSet:=factor(DataSet, levels = c('Bhaduri et al.',
+                                               'Giandomenico et al.','Velasco et al.','IVD-organoids'))]
+
+comparison_list = list()
+for(i in unique(Glycolysis2plot$DataSet)[-3]){
+  comparison_list[[i]] = c('IVD-organoids',i)
+}
+
+#apop2plot[,Source:=factor(Source, levels = c('Primary\n(Bhaduri)','hCO\n(Bhaduri)',
+#                                               'hCO\n(Giandomenico)','hCO\n(Velasco)','IVD-organoid'))]
+
+
+Glycolysis = ggpubr::ggviolin(Glycolysis2plot, x = 'DataSet', y = 'Expression',
+                 fill = 'DataSet', ylab = 'Relative expression',
+                 trim = T, title = 'Glycolysis signature',xlab = '')+
+  geom_boxplot(width=0.08, fill = '#DCDCDC', outlier.shape = NA)+
+ stat_compare_means(comparisons = comparison_list,
+                                label = 'p.signif') + 
+  my_theme + theme(legend.position = 'none',axis.text.x = element_text(size=16,angle = 40,vjust = 0.9,hjust = 0.9)) + 
+  scale_fill_manual(values = plot.colors)
+
+Glycolysis
+
+
+#pdf('~/Project/Organoid/figure/20200809/Integration/Apoptosis_signature_across_Arnold_hCO_vhCO_and_IVD.pdf',6,6)
+#all
+#dev.off()
+```
+
+
+### ER stress: response to endoplasmic reticulum stress (GO:0034976)
+```{r,fig.width=6.5,fig.height=5}
+ER_stress = unlist(GO_DATA$PATHID2EXTID['GO:0034976'])
+length(ER_stress)
+mats = ls(pattern = 'RG_mat')[-c(4,5)]
+pools = data.frame(DataSet = gsub('.RG_mat','',mats), Mat = mats)
+pools
+
+
+ER_stress2plot = do.call(rbind, lapply(1:nrow(pools), function(i){
+  RG_mat = eval(parse(text = pools$Mat[i]))
+  apop_mat = RG_mat[rownames(RG_mat)%in%ER_stress,]
+  apop_aver = as.numeric(apply(apop_mat,2,mean))
+  names(apop_aver) = colnames(apop_mat)
+  out = data.table(Expression = apop_aver,
+                   cellID = names(apop_aver),
+                   DataSet = pools$DataSet[i])
+  out
+}))
+
+table(ER_stress2plot$DataSet)
+
+#comparison = gtools::combinations(5,2,unique(apop2plot$DataSet))
+ER_stress2plot[,DataSet:=paste0(DataSet,' et al.')]
+ER_stress2plot[grep('IVD',DataSet)]$DataSet = 'IVD-organoids'
+
+ER_stress2plot[,DataSet:=factor(DataSet, levels = c('Bhaduri et al.',
+                                               'Giandomenico et al.','Velasco et al.','IVD-organoids'))]
+
+comparison_list = list()
+for(i in unique(ER_stress2plot$DataSet)[-3]){
+  comparison_list[[i]] = c('IVD-organoids',i)
+}
+
+#apop2plot[,Source:=factor(Source, levels = c('Primary\n(Bhaduri)','hCO\n(Bhaduri)',
+#                                               'hCO\n(Giandomenico)','hCO\n(Velasco)','IVD-organoid'))]
+
+
+ER_stressP = ggpubr::ggviolin(ER_stress2plot, x = 'DataSet', y = 'Expression',
+                 fill = 'DataSet', ylab = 'Relative expression',
+                 trim = T, title = 'ER stress signature',xlab = '')+
+  geom_boxplot(width=0.08, fill = '#DCDCDC', outlier.shape = NA)+
+ stat_compare_means(comparisons = comparison_list,
+                                label = 'p.signif') + 
+  my_theme + theme(legend.position = 'none',axis.text.x = element_text(size=16,angle = 40,vjust = 0.9,hjust = 0.9)) + 
+  scale_fill_manual(values = plot.colors)
+
+ER_stressP
+
+
+#pdf('~/Project/Organoid/figure/20200809/Integration/Apoptosis_signature_across_Arnold_hCO_vhCO_and_IVD.pdf',6,6)
+#all
+#dev.off()
+```
+
+
+
+```{r}
+common_genes = Reduce(intersect, list(rownames(Bhaduri.RG_mat),
+                                      rownames(IVD.RG_mat),
+                                      rownames(Giandomenico.RG_mat),
+                                      rownames(Velasco.RG_mat)))
+
+RG_mat = Reduce(cbind, list(Bhaduri.RG_mat[common_genes,],
+                            IVD.RG_mat[common_genes,],
+                            Giandomenico.RG_mat[common_genes,],
+                            Velasco.RG_mat[common_genes,]))
+
+RG_melt = reshape2::melt(as.matrix(RG_mat[rownames(RG_mat)%in%c(apop_genes,stress_genes,hypoxia,Hall_hypoxia,glycolysis,ER_stress,'GORASP2',c('LEF1','LHX2','LMX1A','BTG3')),]))
+setDT(RG_melt)
+colnames(RG_melt) = c('gene_name','cellID','Expression')
+RG_melt$DataSet = 'IVD'
+RG_melt[cellID%in%colnames(Bhaduri.RG_mat)]$DataSet = 'Bhaduri'
+RG_melt[cellID%in%colnames(Velasco.RG_mat)]$DataSet = 'Velasco'
+RG_melt[cellID%in%colnames(Giandomenico.RG_mat)]$DataSet = 'Giandomenico'
+
+RG_melt[,DataSet:=paste0(DataSet,' et al.')]
+RG_melt[grep('IVD',DataSet)]$DataSet = 'IVD-organoids'
+
+RG_melt[,DataSet:=factor(DataSet, levels = c('Bhaduri et al.',
+                                               'Giandomenico et al.','Velasco et al.','IVD-organoids'))]
+
+comparison_list = list()
+for(i in unique(RG_melt$DataSet)[-2]){
+    comparison_list[[i]] = c('IVD-organoids',i)
+}
+
+```
+
+```{r}
+
+for(gene in sort(c('ALDOA','BBC3','PGK1','CASP3','ENO2','BTG3','CDK5RAP3','BNIP3','SFRP1',"GORASP2",'CD24','TMX1'))){
+  #pdf(paste0('~/Project/Organoid/figure/to_pub/fig3/VlnPlot/',gene,'_expression_comparison_between_IVD_and_hCO.pdf'),4.5,5.7)
+  vp = ggpubr::ggviolin(RG_melt[gene_name==gene],
+                      x = 'DataSet', y = 'Expression',
+                 fill = 'DataSet', ylab = 'Relative expression',
+                 trim = T, title = gene,xlab = '')+
+  geom_point(size=0.1,position="jitter", alpha=.75)+
+ stat_compare_means(comparisons = comparison_list,
+                                label = 'p.signif') + 
+  my_theme + theme(legend.position = 'none',axis.text.x = element_text(size=16,angle = 40,vjust = 0.9,hjust = 0.9)) + 
+  scale_fill_manual(values = plot.colors)
+  #assign(gene, vp)
+  print(vp)
+  assign(gene, vp)
+  #dev.off()
+}
+
+
+```
+
+
+```{r}
+#B = plot_grid(ALDOA,ENO2,PGK1,ncol = 3)
+AB = plot_grid(Glycolysis,ALDOA,ENO2,PGK1,ncol = 4,labels = c('A','B','',''), label_size = 25)
+#D = plot_grid(CDK5RAP3,GORASP2,TMX1,ncol = 3)
+CD = plot_grid(ER_stressP,CDK5RAP3,GORASP2,TMX1,ncol = 4,labels = c('C','D','',''), label_size = 25)
+#FG = plot_grid(BNIP3,CD24,SFRP1,ncol = 3)
+EF = plot_grid(Hypoxia,BNIP3,CD24,SFRP1,ncol = 4,labels = c('E','F','',''), label_size = 25)
+#H = plot_grid(BBC3,BTG3,CASP3,ncol = 3)
+GH = plot_grid(apoptosis,BBC3,BTG3,CASP3,ncol = 4,labels = c('G','H','',''), label_size = 25)
+```
+
+```{r,fig.width=16,fig.height=20}
+Fig3 = plot_grid(AB,CD,EF,GH,ncol = 1)
+Fig3
+
+pdf('~/Project/Organoid/figure/In_paper/IVD_Fig3.pdf',16,20)
+Fig3
+dev.off()
+```
+
+Glycolysis: ALDOA, ALDOC, ENO1, ENO2, PGK1
+ER stress: CDK5RAP3, GORASP2, TMX1, UFM1
+Hypoxia: BNIP3, CD24, SFRP1
+Apoptosis: BBC3, BTG3, CASP3
+
+In contrast to ALDOB and ALDOC, ALDOA plays a major role in glycolysis and the maintenance of glucose homeostasis. ALDOC is abundant in the central nervous system. Studies have reported that ALDOA expression levels are associated with the overall survival of different kinds of tumors. 
+[MUC16 C-terminal binding with ALDOC disrupts the ability of ALDOC to sense glucose and promotes gallbladder carcinoma growth](https://www.sciencedirect.com/science/article/pii/S0014482720303657)
+
+[Enolase 1 stimulates glycolysis to promote chemoresistance in gastric cancer](https://pubmed.ncbi.nlm.nih.gov/28548950/)
+[ENO2 Promotes Cell Proliferation, Glycolysis, and Glucocorticoid-Resistance in Acute Lymphoblastic Leukemia](https://www.karger.com/?DOI=10.1159/000489196)
+
+[Hypoxia induces glycosis genes](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3969228/)
+
+[Wnt3a enhanced hypoxia-induced apoptosis](https://www.sciencedirect.com/science/article/pii/S1043466620302532)
+
+[BBC3 regulates ER stress-induced neuronal apoptosis (PubMed:23340338)](https://www.uniprot.org/uniprot/Q9BXH1)
+
+[BBC3 regulates developmental apoptosis but not axonal injury induced death in  the retina](https://www.researchgate.net/publication/51495786_BBC3_PUMA_regulates_developmental_apoptosis_but_not_axonal_injury_induced_death_in_the_retina)
+
+[Expression of bbc3, a pro-apoptotic BH3-only gene, is regulated by diverse cell death and survival signals](https://www.pnas.org/content/98/20/11318)
+
+[CDK5RAP3 Deficiency Restrains Liver Regeneration after Partial Hepatectomy Triggering Endoplasmic Reticulum Stress](https://www.sciencedirect.com/science/article/abs/pii/S0002944020304119)
+
+[Hypoxia-mediated CD24 expression is correlated with gastric cancer aggressiveness by promoting cell migration and invasion](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4462374/)
