@@ -1,0 +1,1826 @@
+---
+title: "IVD_organoid_fig2_plot"
+author: "HuangFei"
+date: "2020/10/29"
+output: html_document
+---
+
+## load dependence
+```{r,warning=FALSE}
+need_pkgs <- c('Seurat','cowplot', 'slingshot','ggpubr',
+               'data.table', 'reticulate','ggplot2','ggsci')
+
+for(i in need_pkgs){
+  #if(!require(i, character.only = T)) {
+   # install.packages(i)
+    require(i, quietly = T, character.only = T)
+   # } 
+}
+```
+
+```{r,echo=FALSE}
+library(ggplot2)
+my_theme <- theme(plot.title = element_text(hjust = 0.5, size = 18),
+                  #legend.position = 'right',
+                  legend.title =element_text(size=15),
+                  legend.text = element_text(size=15),
+                  axis.text.x = element_text(size=15),
+                  axis.title.x = element_text(size=15),
+                  axis.title.y = element_text(size=15),
+                  axis.text.y  = element_text(size=15),
+                  panel.border = element_blank(),
+                  axis.line.x = element_line(size=0.25, color="black"),
+                  axis.line.y = element_line(size=0.25, color="black"),
+                  panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank(),
+                  panel.grid.major.x = element_blank(), panel.grid.major.y = element_blank(),
+                  panel.background = element_rect(fill='white'),
+                  legend.key=element_blank(),
+                  strip.text.x = element_text(size=15),
+                  strip.text.y = element_text(size=15),
+                  strip.background = element_rect(colour = 'white', fill = 'white'))
+```
+
+## load data
+### 25 PCs
+```{r,fig.width=4.6,fig.height=4.3}
+SC_organoid = readRDS('~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_Seurat_obj.rds')
+
+meta = as.data.table(SC_organoid@meta.data); meta$cellID = colnames(SC_organoid)
+
+#SC_organoid = FindClusters(SC_organoid, resolution = 0.2)
+cluter.colors = scales::hue_pal()(9)[c(3,7,8,4,5,6,9,1,5)]
+
+DimPlot(SC_organoid, label = T) + NoLegend() + xlim(c(-10,7.5))
+
+pc = 25
+```
+
+#### tSNE
+```{r,fig.height=4.5,fig.width=4.5}
+TSNEPlot(SC_organoid, label = T) + NoLegend()
+
+meta = SC_organoid@meta.data
+meta[grep('CP',meta$CellType),'CellType'] = 'Ependymal'
+#meta[grep('Epen',meta$CellType),'CellType'] = 'CP'
+#meta[grep('NPC',meta$CellType),'CellType'] = 'PP'
+meta -> SC_organoid@meta.data
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_clusters_in_tSNE.pdf',4.5,4.5)
+TSNEPlot(SC_organoid, label = T) + NoLegend()+labs(x='tSNE1',y='tSNE2')
+dev.off()
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_CellType_identification_in_tSNE.pdf',5.4,4.5)
+DimPlot(SC_organoid, group.by = 'CellType', reduction = 'tsne', label = T)+labs(x='tSNE1',y='tSNE2')
+dev.off()
+```
+
+```{r}
+UMAP = DimPlot(SC_organoid, group.by = 'CellType', reduction = 'umap', label = T)+labs(x='UMAP1',y='UMAP2')
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_in_UMAP.pdf',4.2,4.5)
+DimPlot(SC_organoid, reduction = 'umap', label = T)+labs(x='UMAP1',y='UMAP2')+NoLegend()
+dev.off()
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_CellType_identification_in_UMAP.pdf',5.4,4.5)
+UMAP
+dev.off()
+```
+
+### percentage of cell-types
+```{r}
+library(ggsci)
+tmp = SC_organoid@meta.data
+table(tmp$CellType)
+
+tmp[grep('BRC',tmp$CellType),]$CellType = 'BRC/CBC'
+#tmp[grep('Neu',tmp$CellType),]$CellType = 'EN'
+tmp[grep('Ependymal',tmp$CellType),]$CellType = 'Choroid plexus'
+
+SC_organoid@meta.data = tmp
+
+cell_table = as.data.frame(table(tmp$CellType))
+cell_table
+
+cell_table$All = sum(cell_table$Freq)
+
+cell_table = transform(cell_table, Per = 100*Freq/All)
+
+cell.colors = scales::hue_pal()(8)
+
+pie(cell_table$Per, col = cell.colors)
+
+#cell.colors = c(pal_jco()(6), pal_jama()(7)[c(1:2,5:6)])
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_cell_percentage.pdf',width = 7.5,height = 5)
+#margin(rep(0.5,4))
+pie(cell_table$Per, col = cell.colors,labels = rep('',10),main = 'Cell-type fractions in IVD-organoids')
+with(cell_table, legend("right",paste0(Var1,'(',round(Per,1),'%)'),cex=0.85, fill=cell.colors,bty = 'n'))
+dev.off()
+```
+### plot the celltype fraction of Arnold-hCO as comparison
+```{r}
+Arnold_meta = fread('~/Project/Organoid/Arnold_2020_Nature/download_file/Organoid_cells_meta.tsv',header = T,sep = '\t')
+
+Arnold_meta
+table(Arnold_meta$Type)
+
+Arnold_meta[grep('As',Type)]$Type = 'AS'
+Arnold_meta[grep('In',Type)]$Type = 'IN'
+Arnold_meta[grep('Ex',Type)]$Type = 'EN'
+Arnold_meta[grep('Ra',Type)]$Type = 'RG'
+
+cell_table = as.data.frame(table(Arnold_meta$Type))
+cell_table
+
+cell_table$All = sum(cell_table$Freq)
+
+cell_table = transform(cell_table, Per = 100*Freq/All)
+
+cell.colors = scales::hue_pal()(8)[-2]
+
+
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Arnold_hCO_cell_percentage.pdf',width = 7.5,height = 5)
+#margin(rep(0.5,4))
+pie(cell_table$Per, col = cell.colors,labels = rep('',10),main = 'Cell-type fractions in hCOs (Bhaduri et al.)')
+with(cell_table, legend("right",paste0(Var1,'(',round(Per,1),'%)'),cex=0.85, fill=cell.colors,bty = 'n'))
+dev.off()
+```
+
+```{r,fig.width=10,fig.height=8}
+#pdf('~/Project/Organoid/figure/to_pub/fig2/Comparison_of_CellType_fractions_between_IVD_and_hCO.pdf',10,8)
+par(mfrow=c(1,2))
+cell_table = as.data.frame(table(tmp$CellType))
+cell_table
+
+cell_table$All = sum(cell_table$Freq)
+
+cell_table = transform(cell_table, Per = 100*Freq/All)
+
+cell.colors = scales::hue_pal()(8)
+
+
+pie(cell_table$Per, col = cell.colors,labels = rep('',10),main = 'IVD-organoids')
+title(main = 'IVD-organoids', cex.axis = 2)
+with(cell_table, legend("top",paste0(Var1,'(',round(Per,1),'%)'),cex=0.85, fill=cell.colors,bty = 'n'))
+
+
+cell_table = as.data.frame(table(Arnold_meta$Type))
+cell_table
+
+cell_table$All = sum(cell_table$Freq)
+
+cell_table = transform(cell_table, Per = 100*Freq/All)
+
+cell.colors = scales::hue_pal()(8)[-2][c(1,3,2,4:7)]
+
+
+
+pie(cell_table$Per, col = cell.colors,labels = rep('',10))
+title(main = 'hCOs (Bhaduri et al.)', cex.axis = 2)
+with(cell_table, legend("top",paste0(Var1,'(',round(Per,1),'%)'),cex=0.85, fill=cell.colors,bty = 'n'))
+#dev.off()
+```
+
+
+### Heatmap of cell-type markers
+notice: heatmap will auto sorted the cell clusters from the largest cluster to the smallest cluster, while we shoud keep the coordinates of cells' colors cooresponding to the UMAP projection.
+Using celltype's order to adjust the coordinates of colors 
+```{r}
+cell.colors = scales::hue_pal()(8)
+names(cell.colors) = unique(sort(SC_organoid@meta.data$CellType))
+
+sorted_cells = c('CP','RG','Unknown','Neuron','BRC','PP','AS','Pericyte')
+```
+
+
+```{r}
+cell.markers = list()
+for(i in unique(sort(SC_organoid@meta.data$CellType))){
+  tmp = SC_organoid@meta.data
+  tmp$comparison = as.character(i)
+  tmp[tmp$CellType!=i,]$comparison = 'Other'
+  SC_organoid@meta.data = tmp
+  markers = FindMarkers(SC_organoid, logfc.threshold = 0.5, 
+                                    group.by = 'comparison', 
+                                    ident.1 = i,ident.2 = 'Other',
+                                    only.pos = T)
+  
+  markers = tibble::rownames_to_column(markers, var = 'gene_name')
+  cell.markers[[i]] = setDT(markers)[,CellType:=i]
+
+}
+
+cell.markers = do.call(rbind, cell.markers)
+
+cell.markers
+table(cell.markers$CellType)
+
+cell.markers
+```
+
+```{r}
+write.table(cell.markers, sep = ',', row.names = F,
+            quote = F, file = '~/Project/Organoid/result/text/DEG/IVD_organoid_celltype_marker_gene_list.csv')
+```
+
+
+```{r}
+cell.markers[grep('SLC17A',gene_name)]
+cell.markers[grep('SOX2|PAX6|TNC|HES1',gene_name)]
+cell.markers[grep('NEUROD|ASCL1|NHLH1',gene_name)]
+cell.markers[grep('SOX2|PAX6',gene_name)]
+```
+
+
+```{r,fig.height=10,fig.width=12}
+cell.markers$CellType = factor(cell.markers$CellType,
+                                        levels = sorted_cells)
+
+cell.markers = cell.markers[order(CellType,p_val_adj)]
+
+top10.markers = cell.markers[,head(.SD,10), by = .(CellType)]
+top10.markers
+
+SC_organoid = ScaleData(SC_organoid, features = rownames(SC_organoid))
+
+
+DoHeatmap(SC_organoid, features = top10.markers$gene_name,
+          group.by = 'CellType', group.colors = cell.colors[sorted_cells], slot = 'scale.data')
+
+
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/CellType_markers_heatmap_version1.pdf',10,12)
+DoHeatmap(SC_organoid, features = top10.markers$gene_name,
+          group.by = 'CellType', group.colors = cell.colors[sorted_cells],slot = 'scale.data')
+dev.off() cell.markers[grep('BMP4|BMP7',gene_name)]
+
+
+png('~/Project/Organoid/figure/to_pub/fig2/CellType_markers_heatmap_version1.png',width = 1000, height = 1200)
+DoHeatmap(SC_organoid, features = top10.markers$gene_name,
+          group.by = 'CellType', group.colors = cell.colors[sorted_cells],slot = 'scale.data')
+dev.off()
+```
+
+
+### GO enrichment for cell markers
+```{r,fig.width=16,fig.height=14}
+library(clusterProfiler)
+library(DOSE)
+cell.markers[,Group:=CellType]
+diff_gene_ID<-clusterProfiler::bitr(cell.markers$gene_name, fromType = 'SYMBOL', toType ="ENTREZID", OrgDb="org.Hs.eg.db")
+colnames(diff_gene_ID)[1] = 'gene_name'
+diff_gene_ID = merge(diff_gene_ID, cell.markers[,.(gene_name,Group)], by = 'gene_name')
+dim(diff_gene_ID)
+
+formula_kegg.homo = compareCluster(ENTREZID~Group, data = diff_gene_ID, fun = 'enrichKEGG', organism = 'hsa', pvalueCutoff=0.05)
+
+formula_bp.homo = compareCluster(ENTREZID~Group, data = diff_gene_ID, fun = 'enrichGO', OrgDb = 'org.Hs.eg.db', pvalueCutoff=0.05, ont = 'BP')
+formula_cc.homo = compareCluster(ENTREZID~Group, data = diff_gene_ID, fun = 'enrichGO', OrgDb = 'org.Hs.eg.db', pvalueCutoff=0.05, ont = 'CC')
+formula_mf.homo = compareCluster(ENTREZID~Group, data = diff_gene_ID, fun = 'enrichGO', OrgDb = 'org.Hs.eg.db', pvalueCutoff=0.05, ont = 'MF')
+
+
+
+
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/GO_enrichment_for_IVD_CellType_gene_markers.pdf',14,10)
+dotplot(formula_bp.homo, title = 'GO (BP) enrichment')+my_theme+labs(y = 'GO terms')+theme(axis.text.x = element_text(size = 16, vjust = 0.9,hjust = 0.9,angle = 40))
+dotplot(formula_cc.homo, title = 'GO (CC) enrichment')+my_theme+theme(axis.text.x = element_text(size = 16, vjust = 0.9,hjust = 0.9,angle = 40))
+dotplot(formula_mf.homo, title = 'GO (MF) enrichment')+my_theme+theme(axis.text.x = element_text(size = 16, vjust = 0.9,hjust = 0.9,angle = 40))
+dev.off()
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/KEGG_enrichment_for_IVD_CellType_gene_markers.pdf',14,9.5)
+dotplot(formula_kegg.homo, title = 'KEGG enrichment')+my_theme+theme(axis.text.x = element_text(size = 16, vjust = 0.9,hjust = 0.9,angle = 40))
+dev.off()
+
+
+dotplot(formula_bp.homo, title = 'GO (BP) enrichment')+my_theme+labs(y = 'GO terms')
+dotplot(formula_cc.homo, title = 'GO (CC) enrichment')+my_theme
+dotplot(formula_mf.homo, title = 'GO (MF) enrichment')+my_theme
+
+dotplot(formula_kegg.homo, title = 'KEGG enrichment')+my_theme+theme(axis.text.x = element_text(size = 16, vjust = 0.9,hjust = 0.9,angle = 40))
+
+```
+
+### bar charrt to show significance of 
+```{r}
+IVD.kegg = as.data.table(formula_kegg.homo@compareClusterResult)
+
+
+IVD.BP = as.data.table(formula_bp.homo@compareClusterResult)
+IVD.BP[,GeneNum:=mapply(function(x) as.numeric(x[1]),strsplit(GeneRatio,'/'))]
+IVD.BP = IVD.BP[qvalue<0.01&GeneNum>=10]
+
+IVD.BP[order(Cluster,qvalue)][,.(Group,Description,GeneNum,qvalue)]
+IVD.kegg
+
+write.table(IVD.BP, sep = '\t', row.names = F, quote = F, file = '~/Project/Organoid/result/text/GO_enrichment_result_of_IVD_CellType_markers.txt')
+```
+
+
+
+### 20 PCs
+```{r}
+load('~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_using_20PCs_Seurat_obj.Rdata')
+DimPlot(SC_organoid, label = T)
+
+meta = as.data.table(SC_organoid@meta.data); meta$cellID = colnames(SC_organoid)
+
+used_cells = meta[!meta$RNA_snn_res.0.25%in%c(9,10)]$cellID
+length(used_cells)
+SC_organoid = SC_organoid[,used_cells]
+
+pc = 20 
+```
+
+
+## preparation to plot significant gene markers
+```{r}
+exprMatrix = as.matrix(SC_organoid@assays$RNA@data)
+
+cellsUMAP = Embeddings(object = SC_organoid, reduction = "umap")
+
+cellsTsne = Embeddings(object = SC_organoid, reduction = "tsne")
+
+cellsReduction = as.data.frame(cbind(cellsUMAP, cellsTsne))
+cellsReduction$SampleID = rownames(cellsReduction)
+```
+
+
+## General neuronal markers 
+```{r,fig.width=7.5,fig.height=7.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+
+target_cells = meta[RNA_snn_res.0.2==3&CellType%in%c('Neuron')]$cellID
+  
+gene = 'DCX'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'DCX', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+DCX = tmp1
+
+gene = 'STMN2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'STMN2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+STMN2 = tmp2
+
+gene = 'GAP43'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp3 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'GAP43', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+GAP43 = tmp3
+
+gene = 'MAP2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp4 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+       geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'MAP2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+MAP2 = tmp4
+
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Neuron_markers_UMAP.pdf',6,7)
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+dev.off()
+```
+
+## Cortical excitatory neurons
+```{r,fig.width=7.5,fig.height=3.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+
+target_cells = meta[RNA_snn_res.0.2%in%c(3)&CellType%in%c('Neuron')]$cellID
+  
+gene = 'SLC17A7'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'vGLUT1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+vGLUT1 = tmp1
+
+gene = 'SLC17A6'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'vGLUT2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+vGLUT2 = tmp2
+
+
+plot_grid(tmp1, tmp2,ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Cortical_excitatory_neuron_markers_UMAP.pdf',6,3.5)
+plot_grid(tmp1, tmp2, ncol = 2)
+dev.off()
+```
+
+```{r}
+Neuron_cells = meta[CellType%in%c('Neuron')]$cellID
+length(Neuron_cells)
+
+SLC17A7 = exprMatrix['SLC17A7',Neuron_cells]
+summary(SLC17A7)
+
+length(SLC17A7[SLC17A7>0])/length(SLC17A7)
+
+
+SLC17A6 = exprMatrix['SLC17A6',Neuron_cells]
+summary(SLC17A6)
+
+length(SLC17A6[SLC17A6>0])/length(SLC17A6)
+
+FeaturePlot(SC_organoid[,Neuron_cells], c('SLC17A7','SLC17A6'), order = T, cols = c('lightgrey','#FF4500'))
+```
+
+
+## neuron progenitor cells
+```{r,fig.width=7.5,fig.height=7.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+
+if(pc == 25){
+  target_cells = meta[RNA_snn_res.0.2==5&CellType%in%c('NPC')]$cellID
+}else{
+  target_cells = meta[RNA_snn_res.0.25==6&CellType%in%c('NPC')]$cellID
+}
+
+  
+gene = 'MKI67'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'MKI67', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+MKI67 = tmp1
+
+gene = 'TOP2A'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'TOP2A', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+TOP2A = tmp2
+
+gene = 'BIRC5'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp3 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'BIRC5', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+BIRC5 = tmp3
+
+gene = 'CDK1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp4 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+       geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'CDK1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+CDK1 = tmp4
+
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Neuron_progenitor_cells_markers_UMAP.pdf',6,7)
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+dev.off()
+```
+
+
+## Radial glia cells
+```{r,fig.width=7.5,fig.height=7.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+if(pc == 25){
+  target_cells = meta[RNA_snn_res.0.2%in%c(1,7,5)&CellType%in%c('RG','AS','NPC')]$cellID
+}else{
+  target_cells = meta[RNA_snn_res.0.25%in%c(1,7,6)&CellType%in%c('RG','AS','NPC')]$cellID
+}
+  
+gene = 'HES1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'HES1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+HES1 = tmp1
+
+
+gene = 'SOX2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'SOX2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+SOX2 = tmp2
+
+gene = 'PAX6'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp3 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'PAX6', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+PAX6 = tmp3
+
+gene = 'TNC'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp4 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+       geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'TNC', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+TNC = tmp4
+
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Radial_glia_cells_markers_UMAP.pdf',6,7)
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+dev.off()
+```
+
+```{r,fig.width=6,fig.height=3.5}
+FeaturePlot(SC_organoid, c('SOX2','PAX6'),
+             order = T, cols = c('lightgrey','#FF4500'))
+
+gene = 'SOX2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+SOX2 = ggplot(cellsReduction[order(cellsReduction$expr),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'SOX2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+
+gene = 'PAX6'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+PAX6 = ggplot(cellsReduction[order(cellsReduction$expr),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'PAX6', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+
+plot_grid(SOX2, PAX6, ncol = 2)
+```
+
+```{r}
+RG_cells = meta[CellType%in%c('RG','AS')]$cellID
+length(RG_cells)
+
+sox2 = exprMatrix['SOX2',RG_cells]
+summary(sox2)
+
+length(sox2[sox2>0])/length(sox2)
+
+
+pax6 = exprMatrix['PAX6',RG_cells]
+summary(pax6)
+
+length(pax6[pax6>0])/length(pax6)
+
+FeaturePlot(SC_organoid[,RG_cells], c('SOX2','PAX6'), order = T, cols = c('lightgrey','#FF4500'))
+
+VlnPlot(SC_organoid, group.by = 'seurat_clusters', features = 'SOX2')
+VlnPlot(SC_organoid, group.by = 'CellType', features = 'SOX2')
+```
+
+
+## Astrocyte
+```{r,fig.width=7.5,fig.height=7.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+if(pc ==25){
+  ### 25 PCs
+  target_cells = meta[RNA_snn_res.0.2%in%c(7)&CellType%in%c('AS')]$cellID
+}else{
+  ### 20 PCs
+  target_cells = meta[RNA_snn_res.0.25%in%c(7)&CellType%in%c('AS')]$cellID
+}
+
+
+  
+gene = 'GFAP'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'GFAP', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+GFAP = tmp1
+
+gene = 'SLC1A3'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'EAAT1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+EAAT1 = tmp2
+
+gene = 'HOPX'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp3 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'HOPX', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+HOPX = tmp3
+
+gene = 'S100B'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp4 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+       geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'S100B', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+S100B = tmp4
+
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Astrocyte_markers_UMAP.pdf',6,7)
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+dev.off()
+```
+
+## Intermediate progenitor cells
+```{r,fig.width=7.5,fig.height=7.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+
+target_cells = meta[RNA_snn_res.0.2%in%c(3)&CellType%in%c('Neuron')]$cellID
+  
+gene = 'NEUROD1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'NEUROD1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+NEUROD1 = tmp1
+
+gene = 'NEUROD4'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'NEUROD4', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+NEUROD4 = tmp2
+
+gene = 'ASCL1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp3 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'ASCL1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+ASCL1 = tmp3
+
+gene = 'NHLH1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp4 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+       geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'NHLH1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+NHLH1 = tmp4
+
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Intermediate_progenitor_cells_markers_UMAP.pdf',6,7)
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+dev.off()
+```
+
+## BMP signaling related cells (BRC)
+```{r,fig.width=7.5,fig.height=3.5,warning=FALSE,message=FALSE}
+if(pc == 25){
+  target_cells = meta[RNA_snn_res.0.2%in%c(4,6)&CellType%in%c('BRC')]$cellID
+}else{
+  target_cells = meta[RNA_snn_res.0.25%in%c(4,5)&CellType%in%c('BRC')]$cellID
+}
+
+gene = 'BMP4'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'BMP4', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+BMP4 = tmp1
+
+gene = 'BMP7'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'BMP7', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+BMP7 = tmp2
+
+
+plot_grid(tmp1, tmp2,ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/BRC_markers_UMAP.pdf',6,3.5)
+plot_grid(tmp1, tmp2, ncol = 2)
+dev.off()
+
+
+gene = 'SLC2A1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp3 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'GLUT1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+tmp3
+
+pdf('~/Project/Organoid/figure/to_pub/fig4/Subtype/BBB_marker_GLUT1_in_IVD.pdf',3,3)
+tmp3
+dev.off()
+```
+
+## Cilium-bearing cell (CBC)
+```{r,fig.width=7.5,fig.height=3.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+
+target_cells = meta[RNA_snn_res.0.2%in%c(0)&CellType%in%c('Ependymal')]$cellID
+  
+gene = 'MNS1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'MNS1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+MNS1 = tmp1
+
+gene = 'NPHP1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'NPHP1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+NPHP1 = tmp2
+
+plot_grid(tmp1, tmp2,ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/CBC_markers_UMAP.pdf',6,3.5)
+plot_grid(tmp1, tmp2, ncol = 2)
+dev.off()
+```
+
+## Choroid plexus
+```{r,fig.width=7.5,fig.height=3.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+
+target_cells = meta[RNA_snn_res.0.2%in%c(0)]$cellID
+  
+gene = 'TTR'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+#non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'TTR', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+TTR = tmp1
+
+gene = 'PIFO'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'PIFO', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+PIFO = tmp2
+
+
+plot_grid(tmp1, tmp2,ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Choroid_plexus_markers_UMAP.pdf',6,3.5)
+plot_grid(tmp1, tmp2, ncol = 2)
+dev.off()
+```
+
+
+## Pericyte
+```{r,fig.width=7.5,fig.height=3.5,warning=FALSE,message=FALSE}
+c('GAP43','STMN2','DCX','MAP2')
+if(pc == 25){
+  target_cells = meta[RNA_snn_res.0.2%in%c(8)&CellType%in%c('Pericyte')]$cellID
+}else{
+  target_cells = meta[RNA_snn_res.0.25%in%c(8)&CellType%in%c('Pericyte')]$cellID
+}
+
+gene = 'PDGFRA'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'PDGFRA', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+PDGFRA = tmp1
+
+gene = 'PDGFRB'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp3 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'PDGFRB', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+PDGFRB = tmp3
+
+## COL1A1, COL1A2 and COL3A1
+
+gene = 'COL3A1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'COL3A1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+tmp2 -> COL3A1
+
+gene = 'COL1A1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp4 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'COL1A1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+tmp4 -> COL1A1
+
+plot_grid(tmp1, tmp4, tmp3, tmp2, ncol = 2)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Pericyte_markers_UMAP.pdf',6,7)
+plot_grid(tmp1, tmp4, tmp3, tmp2, ncol = 2)
+dev.off()
+```
+
+### Hippocampusc
+```{r}
+target_cells = meta[RNA_snn_res.0.2%in%c(4)]$cellID
+  
+gene = 'LHX2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'LHX2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+LHX2 = tmp1
+
+target_cells = meta[RNA_snn_res.0.2%in%c(3,6)]$cellID
+
+gene = 'LHX9'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'LHX9', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+LHX9 = tmp2
+
+
+target_cells = meta[RNA_snn_res.0.2%in%c(4)]$cellID
+  
+gene = 'ZBTB20'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, ]
+target = sort(target)
+
+
+tmp3 = ggplot(cellsReduction[c(names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'ZBTB20', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+ZBTB20 = tmp3
+
+
+gene = 'PROX1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, ]
+target = sort(target)
+
+tmp4 = ggplot(cellsReduction[c(names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'PROX1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+PROX1 = tmp4
+
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/Hippocampusc_markers_UMAP.pdf',6,7)
+plot_grid(tmp1, tmp2, tmp3, tmp4, ncol = 2)
+dev.off()
+```
+
+```{r,fig.height=6.5,fig.width=7}
+FeaturePlot(SC_organoid, c('LHX2','LHX9','PROX1','ZBTB20'),
+            order = T, cols = c('lightgrey','#FF4500'))
+```
+
+
+```{r,fig.height=6.5,fig.width=7}
+FeaturePlot(SC_organoid, c('LEF1','LHX2','LMX1A','WNT8B'),
+            order = T, cols = c('lightgrey','#FF4500'))
+
+FeaturePlot(SC_organoid, c('NFIA','NFIB','RORB','OTX2'),
+            order = T, cols = c('lightgrey','#FF4500'))
+```
+
+```{r,fig.width=7.5,fig.height=4}
+FeaturePlot(SC_organoid, c('NFIA','NFIB'),
+            order = T, cols = c('lightgrey','#FF4500'))
+
+FeaturePlot(SC_organoid, c('OTX2','TCF7L2'),
+            order = T, cols = c('lightgrey','#FF4500'))
+
+FeaturePlot(SC_organoid, c('RBFOX3','BCL11B'),
+            order = T, cols = c('lightgrey','#FF4500'))
+```
+
+
+## Striatum projection neurons
+
+
+```{r,fig.width=4,fig.height=4.5}
+target_cells = meta[RNA_snn_res.0.2%in%c(6,8)]$cellID
+  
+gene = 'COL11A1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'COL11A1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+COL11A1 = tmp1
+
+COL11A1
+
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+                        aes(x=tSNE_1,y=tSNE_2,col=expr))+#xlim(c(-10,7.5))+
+      geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+  my_theme+ labs(title = 'COL11A1', x = 'tSNE1', y = 'tSNE2')+theme(legend.position = 'none')
+
+tmp2
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/25PCs/Striatal projection neuron marker-COL11A1.pdf',4.3,4.5)
+tmp1
+tmp2
+dev.off()
+```
+```{r,fig.height=5,fig.width=8}
+plot_grid(tmp1,UMAP+NoLegend()+my_theme)
+```
+
+
+```{r}
+SC_organoid = FindClusters(SC_organoid, resolution = 0.2)
+
+cluster.markers = FindAllMarkers(SC_organoid, only.pos = T, logfc.threshold = 0.5)
+
+head(cluster.markers)
+setDT(cluster.markers)
+
+table(cluster.markers$cluster)
+cluster.markers[,head(.SD,20), by = .(cluster)]
+
+cluster.markers[cluster==1]
+
+cluster.markers[cluster==2]
+
+cluster.markers[cluster%in%c(4,6)]
+
+cluster.markers[cluster==7]
+```
+
+
+
+
+
+## 6. summarzie the annotated cell types -----
+
+### 25 PCs
+```{r}
+organoid_meta = SC_organoid@meta.data
+organoid_meta$cellID = rownames(organoid_meta)
+setDT(organoid_meta)[,seurat_clusters:=RNA_snn_res.0.2]
+
+organoid_meta$CellType = 'Unknown'
+organoid_meta[seurat_clusters%in%c(3)]$CellType = 'Neuron'
+organoid_meta[seurat_clusters%in%c(1)]$CellType = 'RG'
+organoid_meta[seurat_clusters%in%c(7)]$CellType = 'AS'
+organoid_meta[seurat_clusters%in%c(5)]$CellType = 'PP'
+organoid_meta[seurat_clusters%in%c(0)]$CellType = 'Ependymal'
+organoid_meta[seurat_clusters%in%c(4,6)]$CellType = 'BRC'
+organoid_meta[seurat_clusters%in%c(8)]$CellType = 'Pericyte'
+
+
+with(organoid_meta, table(seurat_clusters,CellType))
+table(organoid_meta$CellType)
+
+organoid_meta = organoid_meta[!seurat_clusters%in%c(9,10)]
+  
+setDF(organoid_meta)
+rownames(organoid_meta) = organoid_meta$cellID
+
+SC_organoid = SC_organoid[,rownames(organoid_meta)]
+
+SC_organoid@meta.data = organoid_meta
+
+dim(SC_organoid)
+```
+
+
+```{r,fig.width=5.5,fig.height=4.5}
+cell.colors = c(pal_jco()(4), pal_jama()(7)[c(1:2,5:6)])
+
+DimPlot(SC_organoid, group.by = 'CellType', label = T)
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_CellType_identification_in_UMAP.pdf',5.5,4.5)
+DimPlot(SC_organoid, group.by = 'CellType', label = T, cols = cell.colors) + labs(x='UMAP1',y='UMAP2')
+dev.off()
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_Cluster_in_UMAP.pdf',5.5,4.5)
+DimPlot(SC_organoid,  label = T) + labs(x='UMAP1',y='UMAP2')
+dev.off()
+```
+
+```{r}
+ saveRDS(SC_organoid, file = '~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_Seurat_obj.rds')
+```
+
+
+```{r,fig.height=9,fig.width=9}
+plot_grid(STMN2,NHLH1, vGLUT1, MKI67,SOX2,EAAT1, BMP7, MNS1, COL3A1, ncol=3)
+pdf('~/Project/Organoid/figure/to_pub/fig2/25PCs/Significant_cell_markers_UMAP.pdf',9,9)
+plot_grid(STMN2,NHLH1, vGLUT1, MKI67,SOX2,EAAT1, BMP7, MNS1, COL3A1, ncol=3)
+dev.off()
+```
+
+
+### 20 PCs
+```{r}
+SC_organoid = FindClusters(SC_organoid, resolution = 0.25)
+organoid_meta = SC_organoid@meta.data
+organoid_meta$cellID = rownames(organoid_meta)
+setDT(organoid_meta)[,seurat_clusters:=RNA_snn_res.0.25]
+
+organoid_meta$CellType = 'Unknown'
+organoid_meta[seurat_clusters%in%c(3)]$CellType = 'Neuron'
+organoid_meta[seurat_clusters%in%c(1)]$CellType = 'RG'
+organoid_meta[seurat_clusters%in%c(7)]$CellType = 'AS'
+organoid_meta[seurat_clusters%in%c(6)]$CellType = 'PP'
+organoid_meta[seurat_clusters%in%c(0)]$CellType = 'Ependymal'
+organoid_meta[seurat_clusters%in%c(4,5)]$CellType = 'BRC'
+organoid_meta[seurat_clusters%in%c(8)]$CellType = 'Pericyte'
+
+
+with(organoid_meta, table(seurat_clusters,CellType))
+table(organoid_meta$CellType)
+
+#organoid_meta = organoid_meta[!seurat_clusters%in%c(9,10)]
+  
+setDF(organoid_meta)
+rownames(organoid_meta) = organoid_meta$cellID
+
+#SC_organoid = SC_organoid[,rownames(organoid_meta)]
+
+SC_organoid@meta.data = organoid_meta
+
+dim(SC_organoid)
+```
+
+
+```{r,fig.width=5.5,fig.height=4.5}
+SC_organoid@meta.data -> organoid_meta
+used_cells = organoid_meta[!organoid_meta$RNA_snn_res.0.25%in%c(9,10),'cellID']
+length(used_cells)
+
+cell.colors = c(pal_jco()(4), pal_jama()(7)[c(1:2,5:6)])
+
+DimPlot(SC_organoid[,used_cells], group.by = 'CellType', label = T)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_CellType_identification_in_UMAP_using_20PCs.pdf',5.5,4.5)
+DimPlot(SC_organoid[,used_cells], group.by = 'CellType', 
+        cols = cell.colors, label = T, label.size = 3) + labs(x='UMAP1',y='UMAP2')
+dev.off()
+```
+
+```{r}
+save(SC_organoid, file = '~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_using_20PCs_Seurat_obj.Rdata')
+```
+
+```{r,fig.height=9,fig.width=9}
+plot_grid(STMN2,NHLH1, vGLUT1, MKI67,SOX2,EAAT1, BMP7, MNS1, COL3A1, ncol=3)
+pdf('~/Project/Organoid/figure/to_pub/fig2/20PCs/Significant_cell_markers_UMAP.pdf',9,9)
+plot_grid(STMN2,NHLH1, vGLUT1, MKI67,SOX2,EAAT1, BMP7, MNS1, COL3A1, ncol=3)
+dev.off()
+```
+
+### percentage of cell-types
+```{r}
+library(ggsci)
+tmp = SC_organoid@meta.data
+table(tmp$CellType)
+
+#SC_organoid@meta.data = tmp
+
+cell_table = as.data.frame(table(tmp$CellType))
+cell_table
+
+cell_table$All = sum(cell_table$Freq)
+
+cell_table = transform(cell_table, Per = 100*Freq/All)
+
+pie(cell_table$Per, col = c(pal_jco()(8)))
+
+
+#cell.colors = c(pal_jama()(7)[c(1:2)],pal_jco()(6)[c(1:2,4)], pal_npg()(8)[c(5)],pal_jama()(7)[c(5:6)])
+#cell.colors = cell.colors[sample(1:8,8)]
+
+#cell.colors = c(pal_jco()(4), pal_jama()(7)[c(1:2,5:6)])
+### using the default colors to plot
+cell.colors = scales::hue_pal()(8)
+
+pdf('~/Project/Organoid/figure/to_pub/fig2/IVD_organoid_cell_percentage.pdf',width = 8,height = 5)
+margin(rep(0.5,4))
+pie(cell_table$Per, col = cell.colors,labels = rep('',10),main = 'Cell-type fractions in IVD-organoid')
+with(cell_table, legend("right",paste0(Var1,'(',round(Per,1),'%)'),cex=0.85, fill=cell.colors))
+dev.off()
+```
+
+
+```{r}
+cluster.markers = FindAllMarkers(SC_organoid, only.pos = T,
+                                 logfc.threshold = 0.5)
+
+head(cluster.markers)
+setDT(cluster.markers)
+
+cluster.markers = cluster.markers[p_val_adj<0.05]
+table(cluster.markers$cluster)
+cluster.markers[,head(.SD,20), by = .(cluster)]
+
+cluster.markers[cluster==1]
+
+cluster.markers[cluster==2]
+
+cluster.markers[cluster==4]
+
+#cluster.markers[cluster==9]
+```
+```{r}
+write.csv(cluster.markers, quote = F, row.names = F, 
+          file = '~/Project/Organoid/result/text/DEG/IVD_organoid_cluster_marker_gene_list.csv')
+```
+
+
+```{r,fig.height=7,fig.width=7.5}
+### cluster1
+FeaturePlot(SC_organoid,c('MX1','S100B','WNT4','HES4'),
+            order = T, cols = c('lightgrey','#FF4500'))
+
+
+
+FeaturePlot(SC_organoid,c('TNC','PTPRZ1','NES','SOX2'),
+             order = T, cols = c('lightgrey','#FF4500'))
+
+### cluster2
+FeaturePlot(SC_organoid,c('MEF2A','MEF2C','KLF4','ZNF90'),
+            order = F, cols = c('lightgrey','#FF4500'))
+
+
+
+###cluster3
+FeaturePlot(SC_organoid,c('ELAVL2','ELAVL3','ELAVL4','STMN4'),
+            order = T, cols = c('lightgrey','#FF4500'))
+
+
+FeaturePlot(SC_organoid, ncol = 2, reduction = 'umap', order = T,cols = c('lightgrey','#FF4500'),
+            features = c('WNT2B','CTNNB1','BMP4','BMP7'))
+
+FeaturePlot(SC_organoid, features = c('QKI','FEZ1','PLP1','POU3F1'),ncol = 2,
+            order = T,cols = c('lightgrey','#FF4500'))
+```
+
+
+
+
+### limitation of DEGs of unknown cluster
+```{r}
+other_cells = meta[grep('Unknown',CellType,invert = T)]$cellID
+
+mean_expr = c()
+
+cluster2_markers = cluster.markers[cluster==2]
+
+colnames(cluster2_markers)[7] = 'gene_name'
+
+cluster2_markers[,ENTREZ_ID:=mapIds(org.Hs.eg.db, keys = gene_name, keytype = 'SYMBOL', column = 'ENTREZID')]
+
+for(deg in cluster2_markers$gene){
+  meane = mean(exprMatrix[deg,other_cells])
+  names(meane) = deg
+  mean_expr = append(mean_expr, meane)
+}
+
+cluster2_markers$avg_expr_in_other_cluster = mean_expr
+  
+cluster2_markers[order(avg_expr_in_other_cluster)]
+
+write.csv(cluster2_markers[order(avg_expr_in_other_cluster),c(7:8,1:6,9)], row.names = F, quote = F,
+          file = '~/Project/Organoid/result/text/DEG/IVD_Unknown_Cluster_highly_expressed_gene_list.csv')
+```
+
+```{r}
+summary(mean_expr)
+
+mean_expr = mean_expr[mean_expr<0.5]
+length(mean_expr)
+tail(sort(mean_expr),10)
+
+sort(mean_expr[mean_expr<=0.1])
+
+sort(mean_expr[mean_expr>0.25&mean_expr<0.5])
+```
+
+### DEGs of unknown cluster2
+
+```{r,fig.width=9,fig.height=6}
+### cluster2
+FeaturePlot(SC_organoid,c('MEF2A','MEF2C','ZEB2','ZNF90','FOS','KLF4'),
+            order = T, cols = c('lightgrey','#FF4500'),ncol = 3)
+
+
+FeaturePlot(SC_organoid,c('AIF1','RNF130','QKI','TAF10','RAMP2','BTG2'),
+            order = T, cols = c('lightgrey','#FF4500'),ncol = 3)
+
+FeaturePlot(SC_organoid,c('H3F3C','RNF130','OGT','TAF10','MAF','SMC1A'),
+            order = T, cols = c('lightgrey','#FF4500'),ncol = 3)
+```
+
+```{r}
+library(org.Hs.eg.db)
+
+cluster7_genes = as.data.table(cluster.markers)[cluster==2]
+cluster7_genes = cluster.markers[gene%in%names(mean_expr)]
+
+summary(cluster7_genes$avg_logFC)
+colnames(cluster7_genes)[7] = 'gene_name'
+
+cluster7_genes[,ENTREZ_ID:=mapIds(org.Hs.eg.db, keys = gene_name, keytype = 'SYMBOL', column = 'ENTREZID')]
+
+write.csv(cluster7_genes[p_val_adj<0.05], row.names = F, quote = F,
+          file = '~/Project/Organoid/result/text/DEG/IVD_Unknown_Cluster_highly_expressed_gene_list.csv')
+
+cluster7_genes = cluster7_genes[p_val_adj<0.05]
+```
+
+
+### GO enrichment
+```{r,fig.height=8,}
+library(clusterProfiler)
+library(DOSE)
+ego <- enrichGO(gene          = cluster7_genes$ENTREZ_ID,
+                
+                OrgDb         = org.Hs.eg.db,
+                ont           = "CC",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+        readable      = TRUE)
+
+ego = simplify(ego)
+length(ego@result$Description)
+
+cc = dotplot(ego, showCategory = 31,title='GO (CC)') +theme(
+  plot.title = element_text(hjust = 0.5, size = 20),
+                  legend.title =element_text(size=15),
+                  legend.text = element_text(size=15),
+                  axis.text.x = element_text(size=18),
+                  axis.title.x = element_text(size=15),
+                  axis.title.y = element_text(size=15),
+                  axis.text.y  = element_text(size=15))
+
+
+ego.bp <- enrichGO(gene          = cluster7_genes$ENTREZ_ID,
+                
+                OrgDb         = org.Hs.eg.db,
+                ont           = "BP",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+        readable      = TRUE)
+
+ego.bp = simplify(ego.bp)
+length(ego.bp@result$Description)
+
+bp = dotplot(ego.bp, showCategory = 30,title='GO (BP)') +theme(
+  plot.title = element_text(hjust = 0.5, size = 20),
+                  legend.title =element_text(size=15),
+                  legend.text = element_text(size=15),
+                  axis.text.x = element_text(size=18),
+                  axis.title.x = element_text(size=15),
+                  axis.title.y = element_text(size=15),
+                  axis.text.y  = element_text(size=15))
+
+
+
+ego.mf <- enrichGO(gene          = cluster7_genes$ENTREZ_ID,
+                
+                OrgDb         = org.Hs.eg.db,
+                ont           = "MF",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+        readable      = TRUE)
+
+ego.mf = simplify(ego.mf)
+length(ego.mf@result$Description)
+
+mf = dotplot(ego.mf, showCategory = 3,title='GO (MF)') +theme(
+  plot.title = element_text(hjust = 0.5, size = 20),
+                  legend.title =element_text(size=15),
+                  legend.text = element_text(size=15),
+                  axis.text.x = element_text(size=18),
+                  axis.title.x = element_text(size=15),
+                  axis.title.y = element_text(size=15),
+                  axis.text.y  = element_text(size=15))
+
+bp
+cc
+mf
+```
+
+### KEGG enrichment
+```{r}
+kk <- enrichKEGG(gene         = cluster7_genes$ENTREZ_ID,
+                 organism     = 'hsa',
+                 pvalueCutoff = 0.05)
+
+dotplot(kk)
+```
+
+
+
+
+
+### Neuronal progenitors
+```{r}
+PP_cells = meta[CellType=='NPC']$cellID
+length(PP_cells)
+
+sox2 = exprMatrix['SOX2',PP_cells]
+summary(sox2)
+
+length(sox2[sox2>0])/length(sox2)
+
+
+pax6 = exprMatrix['PAX6',PP_cells]
+summary(pax6)
+
+length(pax6[pax6>0])/length(pax6)
+
+FeaturePlot(SC_organoid[,PP_cells], c('SOX2','PAX6'), order = T, cols = c('lightgrey','#FF4500'))
+```
+
+
+
+## using slingshot to construct the pseudo-time trajectory
+
+```{r}
+meta = as.data.table(SC_organoid@meta.data)
+meta$UMAP1 = cellsReduction$UMAP_1
+meta$UMAP2 = cellsReduction$UMAP_2
+neuron_cluster = meta[grep('NPC|Neuron|RG|AS',CellType)][UMAP1>(-10)]$cellID
+```
+
+
+```{r}
+library(SingleCellExperiment,quietly = T)
+library(RColorBrewer)
+### construct SingleCell dataset
+combine_mat = exprMatrix[,neuron_cluster]
+### notice: SingleCellExperiment don;t need row.names!!!
+rownames(combine_mat) = NULL
+combine_SCE <- SingleCellExperiment(assays = combine_mat)
+colData(combine_SCE) = DataFrame(SC_organoid[,neuron_cluster]@meta.data)
+ 
+rd1 <- SC_organoid[,neuron_cluster]@reductions$umap@cell.embeddings
+rd2 <- SC_organoid[,neuron_cluster]@reductions$tsne@cell.embeddings
+reducedDims(combine_SCE) <- SimpleList(UMAP = rd1, tSNE = rd2)
+```
+
+### plot trajectory based on integrated data (2000 features)  and UMAP embeddings from Seurat
+```{r,warning=FALSE}
+sl_UMAP <- slingshot(combine_SCE, clusterLabels = 'CellType', reducedDim = 'UMAP',
+                 start.clus = 'NPC',end.clus = c('Neuron', 'AS'))
+
+
+colors <- rev(colorRampPalette(brewer.pal(11,'Spectral')[-6])(100))
+
+
+sce_UMAP <- as.data.table(colData(sl_UMAP))
+```
+
+#### branch1
+```{r}
+colors <- rev(colorRampPalette(brewer.pal(11,'Spectral')[-6])(100))
+plot.colors = colors[cut(sce_UMAP$slingPseudotime_1,breaks=100)]
+
+plot.colors[is.na(plot.colors)] = 'grey'
+
+plot(rd1, col = plot.colors, pch=16, asp = 1,cex=0.8)
+lines(SlingshotDataSet(sl_UMAP), lwd=2)
+
+```
+
+#### branch2
+```{r}
+plot.colors = colors[cut(sce_UMAP$slingPseudotime_2,breaks=100)]
+plot.colors[is.na(plot.colors)] = 'grey'
+
+plot(rd1, col = plot.colors, pch=16, asp = 1,cex=0.8)
+lines(SlingshotDataSet(sl_UMAP), lwd=2)
+
+```
+
+
+#### summarize two branches
+```{r,fig.width=5,fig.height=4.5}
+sce_UMAP$slingPseudotime = sce_UMAP$slingPseudotime_2
+sce_UMAP[is.na(slingPseudotime)]$slingPseudotime = sce_UMAP[is.na(slingPseudotime)]$slingPseudotime_1
+
+plot.colors = colors[cut(sce_UMAP$slingPseudotime,breaks=100)]
+plot.colors[is.na(plot.colors)] = 'grey'
+
+plot(rd1, col = plot.colors, pch=16, asp = 1,cex=0.8)
+lines(SlingshotDataSet(sl_UMAP), lwd=2)
+
+SC_organoid@meta.data[SC_organoid@meta.data$CellType=='NPC','CellType'] = 'PP'
+DimPlot(SC_organoid[,neuron_cluster], label = T, group.by = 'CellType')
+```
+
+### using monocle2 
+```{r}
+library(monocle)
+
+neuron_cluster = meta[grep('NPC|RG|AS',CellType)][UMAP1>(-10)]$cellID
+
+pd = new("AnnotatedDataFrame", data = SC_organoid[,neuron_cluster]@meta.data)
+
+cds = newCellDataSet(exprMatrix[,neuron_cluster],
+                     phenoData = pd,
+                     lowerDetectionLimit = 1,
+                     expressionFamily = negbinomial.size())
+
+cds = estimateSizeFactors(cds)
+cds = estimateDispersions(cds)
+
+
+```
+
+```{r}
+cds = detectGenes(cds, min_expr = 1)
+head(fData(cds))
+
+expressed_genes <- row.names(subset(fData(cds),
+    num_cells_expressed >= 10))
+length(expressed_genes)
+```
+
+```{r}
+head(pData(cds))
+
+disp_table <- dispersionTable(cds)
+unsup_clustering_genes <- subset(disp_table, mean_expression >= 0.1)
+cds <- setOrderingFilter(cds, unsup_clustering_genes$gene_id)
+plot_ordering_genes(cds)
+
+plot_pc_variance_explained(cds, return_all = F) # norm_method='log'
+```
+
+
+```{r,fig.height=5,fig.width=4.5}
+cds <- reduceDimension(cds , max_components = 2, num_dim = 11,
+                reduction_method = 'tSNE', verbose = T)
+
+cds <- clusterCells(cds, num_clusters = 2)
+
+plot_cell_clusters(cds, 1, 2,
+                   color = "seurat_clusters")
+
+#plot_cell_clusters(cds,markers = c("TPH1", "TNC"))
+```
+
+```{r}
+diff_test_res <- differentialGeneTest(cds[expressed_genes,],
+              fullModelFormulaStr = "~CellType")
+
+nrow(subset(diff_test_res, qval < 0.01))
+
+ordering_genes <- row.names (subset(diff_test_res, qval < 0.01))
+
+cds <- setOrderingFilter(cds, ordering_genes)
+plot_ordering_genes(cds)
+```
+
+## order cells using the DEGs between cluster0 and cluster1 
+```{r}
+cds = reduceDimension(cds, max_components = 2, method = 'DDRTree')
+
+cds = orderCells(cds)
+```
+
+
+```{r,fig.height=4.5,fig.width=10}
+cl = plot_cell_trajectory(cds, 1,2, color_by = 'seurat_clusters')+
+  my_theme+ theme(legend.position = 'top')
+
+ct = plot_cell_trajectory(cds, 1,2, color_by = 'CellType')+
+  my_theme+ theme(legend.position = 'top')
+
+times = plot_cell_trajectory(cds, 1,2, color_by = 'Pseudotime') + my_theme+
+  theme(legend.position = 'top')+scale_color_gradient2(low = 'grey',high = 'red')
+
+
+plot_grid(ct, times, ncol = 2)
+```
+
+```{r}
+plot_cell_trajectory(cds, color_by = "State") +
+    facet_wrap(~seurat_clusters, nrow = 1)
+```
+
+```{r}
+temporal_genes <- differentialGeneTest(cds,
+fullModelFormulaStr = "~sm.ns(Pseudotime)")
+
+temporal_genes = tibble::rownames_to_column(temporal_genes, var = 'gene_name')
+setDT(temporal_genes)
+temporal_genes = temporal_genes[order(qval)][qval<0.05]
+temporal_genes
+```
+
+```{r}
+Neuron_DEG[gene_name%in%temporal_genes$gene_name]
+```
+
+
+```{r,fig.height=6,fig.width=9}
+cluster1_marker = c('GSG1','NEUROD1','TPH1','IMPG2','NRL','GNB3','AIPL1','SYT1','OTX2')
+cluster2_marker = c('POU3F2','TNC','ENC1','SOX2','NES','BTG2','ELAVL4','CNTN2','NFIB')
+
+plot_genes_in_pseudotime(cds[cluster1_marker[c(1:3,9)],],
+                         color_by = "seurat_clusters", ncol = 2)+
+  my_theme+ theme(legend.position = 'top')
+
+plot_genes_in_pseudotime(cds[cluster2_marker[c(2:3,8:9)],],
+                         color_by = "seurat_clusters", ncol = 2)+
+  my_theme+ theme(legend.position = 'top')
+```
+
