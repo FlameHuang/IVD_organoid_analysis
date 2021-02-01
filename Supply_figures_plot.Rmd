@@ -1,0 +1,607 @@
+---
+title: "Organoid_figures_plotting"
+author: "HuangFei"
+date: "2021/1/22"
+output: html_document
+---
+
+## load dependence
+```{r,warning=FALSE}
+need_pkgs <- c('Seurat','cowplot', 'slingshot','ggpubr',
+               'data.table', 'reticulate','ggplot2')
+
+for(i in need_pkgs){
+  #if(!require(i, character.only = T)) {
+   # install.packages(i)
+    require(i, quietly = T, character.only = T)
+   # } 
+}
+```
+
+```{r,echo=FALSE}
+library(ggplot2)
+my_theme <- theme(plot.title = element_text(hjust = 0.5, size = 20),
+                  #legend.position = 'right',
+                  legend.title =element_text(size=15),
+                  legend.text = element_text(size=15),
+                  axis.text.x = element_text(size=15),
+                  axis.title.x = element_text(size=15),
+                  axis.title.y = element_text(size=15),
+                  axis.text.y  = element_text(size=15),
+                  panel.border = element_blank(),
+                  axis.line.x = element_line(size=0.25, color="black"),
+                  axis.line.y = element_line(size=0.25, color="black"),
+                  panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank(),
+                  panel.grid.major.x = element_blank(), panel.grid.major.y = element_blank(),
+                  panel.background = element_rect(fill='white'),
+                  legend.key=element_blank(),
+                  strip.text.x = element_text(size=15),
+                  strip.text.y = element_text(size=15),
+                  strip.background = element_rect(colour = 'white', fill = 'white'))
+```
+
+## FigS2: cortical markers
+```{r,fig.width=8,fig.height=4.5}
+SC_organoid = readRDS('~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_Seurat_obj.rds')
+
+cortical = c('CUX1','BCL11B','FOXP2','EMX1','AUTS2','TBR1')
+
+FeaturePlot(SC_organoid, cortical,cols = c("lightgrey",'#FF4500'),ncol = 3)
+
+pdf('~/Project/Organoid/figure/In_paper/Supply_Fig/FigS2_Cortical_markers_in_IVD.pdf',8,4.5)
+FeaturePlot(SC_organoid, cortical,cols = c("lightgrey",'#FF4500'),ncol = 3)
+dev.off()
+```
+
+
+
+## FigS4: Integration analysis of IVD-organoids and choroid plexus organoids.
+
+## Load the integration data of IVD and ChP-organoids (Pellegrini-2020-Science)
+```{r}
+load('~/Project/Organoid/result/Integration/Integrate_IVD_and_ChP_organoids.RData')
+DefaultAssay(organoid.integrated) <- 'RNA'
+Imeta <- organoid.integrated@meta.data
+```
+
+### UMAP
+```{r,fig.width=10,fig.height=4}
+tsne1 <- DimPlot(organoid.integrated[,], group.by = c( "orig.ident"),label = T, reduction = 'tsne')+my_theme
+tsne2 <- DimPlot(organoid.integrated[,], group.by = c( "CellType"),label = T, reduction = 'tsne')+my_theme
+
+tsne<-plot_grid(tsne1, tsne2,rel_widths = c(1,0.95))
+tsne
+```
+
+
+```{r}
+load('~/Project/Organoid/result/rdata/Summarize_IVD_and_ChP_organoid_matrix.RData')
+colnames(IVD_aver)
+colnames(ChP_aver) = paste('Organoid', colnames(ChP_aver))
+
+#mat_aver = cbind(IVD_aver[,c(1)],ChP_aver[,c(3,4)])
+mat_aver = cbind(IVD_aver[,-c(3,5,6)],ChP_aver[,])
+head(mat_aver)
+```
+
+
+### correlation
+```{r,fig.width=5.5,fig.height=4.5}
+library(RColorBrewer)
+library(pheatmap)
+aver_cor = cor(mat_aver)
+dim(aver_cor)
+
+
+pheatmap::pheatmap(aver_cor)
+
+#pdf('~/Project/Organoid/figure/to_pub/fig4/choroid_plexus/Correlation_heatmap_between_IVD_and_ChP_organoids.pdf',5.5,4.5)
+corH <- pheatmap(aver_cor,fontsize_col = 13,fontsize_row = 13,
+                   fontsize = 11,angle_col = 315,
+                   color = colorRampPalette(rev(brewer.pal(n = 7, name ="RdBu")))(50))
+
+#dev.off()
+```
+
+### PCA
+```{r,fig.width=5.6,fig.height=3.5}
+mat_aver = cbind(IVD_aver[,-c(3,5,6)],ChP_aver[,])
+head(mat_aver)
+vars = apply(mat_aver,1,sd)
+summary(vars)
+vars = sort(vars,decreasing = T)
+
+aver_pca = prcomp(t(mat_aver[names(vars)[1:500],]),
+                  center = T)
+
+pr_var <- (aver_pca$sdev)^2
+pr_var
+
+summary(aver_pca)
+
+pca_df = as.data.frame(aver_pca$x[,1:2])
+pca_df = tibble::rownames_to_column(pca_df, var = 'ID')
+pca_df
+
+
+pcp = ggplot(pca_df, aes(PC1,PC2,col=ID))+geom_point(size=5)+my_theme+
+  labs(x='PC1 (36%)', y = 'PC2 (33%)')+ ###stat_ellipse()+ too few points to calculate ellipse
+  theme(legend.position = 'right',legend.title = element_blank())
+pcp
+
+```
+
+### PCA
+```{r,fig.width=5.6,fig.height=3.5}
+mat_aver = cbind(IVD_aver[,1],ChP_aver[,])
+head(mat_aver)
+colnames(mat_aver)[1] = 'IVD ChP'
+
+vars = apply(mat_aver,1,sd)
+summary(vars)
+vars = sort(vars,decreasing = T)
+
+aver_pca = prcomp(t(mat_aver[names(vars)[1:500],]),
+                  center = T)
+
+pr_var <- (aver_pca$sdev)^2
+pr_var
+
+summary(aver_pca)
+
+pca_df = as.data.frame(aver_pca$x[,1:2])
+pca_df = tibble::rownames_to_column(pca_df, var = 'ID')
+pca_df
+
+
+pcp = ggplot(pca_df, aes(PC1,PC2,col=ID))+geom_point(size=5)+my_theme+
+  labs(x='PC1 (55%)', y = 'PC2 (31%)')+ ###stat_ellipse()+ too few points to calculate ellipse
+  theme(legend.position = 'right',legend.title = element_blank(),legend.text = element_text(size=15))
+pcp
+
+pdf('~/Project/Organoid/figure/to_pub/fig4/PCA_plot_between_IVD_ChP_and_ChP_organoids.pdf',5,3)
+pcp
+dev.off()
+```
+
+ 
+
+
+## plot significant ChP markers in IVD-organoids
+```{r}
+SC_organoid = readRDS('~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_Seurat_obj.rds')
+exprMatrix = as.matrix(SC_organoid@assays$RNA@data)
+
+cellsUMAP = Embeddings(object = SC_organoid, reduction = "umap")
+
+cellsTsne = Embeddings(object = SC_organoid, reduction = "tsne")
+
+cellsReduction = as.data.frame(cbind(cellsUMAP, cellsTsne))
+cellsReduction$SampleID = rownames(cellsReduction)
+
+meta = SC_organoid@meta.data
+
+meta = cbind(meta,cellsReduction)
+head(meta)
+setDT(meta)
+```
+
+```{r,fig.width=7.5,fig.height=3.5,warning=FALSE,message=FALSE}
+setDT(meta)
+
+
+gene = 'EMX2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, ]
+target = sort(target)
+
+EMX2 = ggplot(cellsReduction[names(target),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'EMX2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+
+gene = 'SIX3'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, ]
+target = sort(target)
+
+SIX3 = ggplot(cellsReduction[names(target),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'SIX3', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+
+
+gene = 'EN2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, ]
+target = sort(target)
+
+EN2 = ggplot(cellsReduction[names(target),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'EN2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+
+gene = 'MEIS1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, ]
+target = sort(target)
+
+MEIS1 = ggplot(cellsReduction[names(target),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'MEIS1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+```
+
+
+```{r,fig.width=5,fig.height=5}
+region<-plot_grid(EMX2, SIX3, EN2, MEIS1, ncol = 2)
+region
+```
+
+
+```{r,fig.width=12,fig.height=10}
+S4<-plot_grid(tsne1,tsne2,corH$gtable,region,
+          labels = c('A','B','C','D'), label_size = 25, rel_heights = c(0.7,1))
+S4
+
+pdf('~/Project/Organoid/figure/In_paper/Supply_Fig/FigS4_integration_of_IVD_and_ChP_organoids.pdf',12,10)
+S4
+dev.off()
+
+```
+
+
+## FigS5: Integration analysis of IVD-organoids, hCOs and vhCOs.
+```{r}
+load('~/Project/Organoid/result/rdata/Integrate_IVD_and_Cakir_vhCO_Seurat_obj.RData')
+```
+
+### plot integrated organoids
+```{r}
+Imeta = organoid.integrated@meta.data
+table(Imeta$CellType)
+Imeta = Imeta[grep('Out|Unk|ME|UPRC',Imeta$CellType,invert = T),]
+
+organoid.integrated = organoid.integrated[,rownames(Imeta)]
+organoid.integrated@meta.data = Imeta
+
+celltype = DimPlot(organoid.integrated,group.by = c('CellType'))+my_theme
+dataset = DimPlot(organoid.integrated,group.by = c('DataSet'))+my_theme
+
+plot_grid(dataset,celltype,rel_widths = c(1,0.95))
+```
+
+
+### plot ChP cells
+```{r,fig.width=9,fig.height=4}
+Imeta = organoid.integrated@meta.data
+head(Imeta)
+#Imeta[grep('hCO',Imeta$DataSet),]$DataSet = paste(Imeta[grep('hCO',Imeta$DataSet),]$DataSet,'(Cakir)')
+ChP_cells = Imeta[Imeta$integrated_snn_res.0.3==2&Imeta$CellType%in%c('Ependyma','CBC'),]
+table(ChP_cells$DataSet)
+table(ChP_cells$CellType)
+ChP = organoid.integrated[,rownames(ChP_cells)]
+CPcelltype = DimPlot(ChP,group.by = c('CellType'))+ylim(c(-11,-1))+my_theme
+CPdataset = DimPlot(ChP,group.by = c('DataSet'))+ylim(c(-11,-1))+my_theme
+plot_grid(CPdataset,CPcelltype,rel_widths = c(1,0.95))
+```
+
+### secretion proteins
+```{r,fig.height=8.7,fig.width=9}
+ChP_cells = ChP@meta.data
+table(ChP_cells$DataSet)
+CP_mat = ChP@assays$RNA@data
+
+secrected_proteins = c('AQP1','APOE','APOD','IGFBP7','CA2','CA12','PARK7','SERPINF1','SLC46A1','SLC23A2')
+
+CP_melt = reshape2::melt(as.matrix(CP_mat[rownames(CP_mat)%in%c(secrected_proteins),]))
+colnames(CP_melt) = c('gene_name','cellID','Expression')
+setDT(CP_melt)
+CP_melt$DataSet = 'IVD-organoids'
+CP_melt[cellID%in%rownames(ChP_cells[ChP_cells$DataSet=='vhCO',])]$DataSet = 'vhCO (Cakir)'
+CP_melt[cellID%in%rownames(ChP_cells[ChP_cells$DataSet=='hCO',])]$DataSet = 'hCO (Cakir)'
+CP_melt = CP_melt[grep('vhCO',DataSet,invert = T)]
+
+comparison_list = list(c('hCO (Cakir)','IVD-organoids'))
+
+plot.colors = pal_jama()(6)[c(4,5)]
+
+CP_melt = CP_melt[order(gene_name)]
+
+CP_melt[,DataSet:=factor(DataSet,levels = c('hCO (Cakir)','IVD-organoids'))]
+
+toplot = CP_melt[gene_name%in%c('APOD','CA2','CA12','IGFBP7','SERPINF1','PARK7')]
+toplot[,gene_name:=factor(gene_name,levels = c('APOD','CA2','CA12','IGFBP7','SERPINF1','PARK7'))]
+
+p1 = ggpubr::ggviolin(toplot,
+                      x = 'DataSet', y = 'Expression',
+                 fill = 'DataSet', ylab = 'Relative expression',
+                 trim = T, title = '',xlab = '')+
+geom_point(size=1,position="jitter", alpha=.7)+
+ stat_compare_means(comparisons = comparison_list,
+                   label = 'p.signif') + 
+  facet_wrap(~gene_name,ncol = 3)+
+  my_theme + theme(legend.position = 'none',axis.text.x = element_text(size=16,angle = 40,vjust = 0.9,hjust = 0.9)) + 
+  scale_fill_manual(values = plot.colors)
+
+p1
+
+#pdf('~/Project/Organoid/figure/to_pub/fig4/choroid_plexus/ChP_protein/Comparison_of_secrected_proteins_between_IVD_and_Cakir_hCOs.pdf',12,8.7)
+#p1
+#dev.off()
+```
+
+
+## plot significant ChP markers in IVD-organoids
+```{r}
+exprMatrix = as.matrix(SC_organoid@assays$RNA@data)
+
+cellsUMAP = Embeddings(object = SC_organoid, reduction = "umap")
+
+cellsTsne = Embeddings(object = SC_organoid, reduction = "tsne")
+
+cellsReduction = as.data.frame(cbind(cellsUMAP, cellsTsne))
+cellsReduction$SampleID = rownames(cellsReduction)
+
+meta = SC_organoid@meta.data
+
+meta = cbind(meta,cellsReduction)
+head(meta)
+setDT(meta)
+```
+
+```{r,fig.width=7.5,fig.height=3.5,warning=FALSE,message=FALSE}
+setDT(meta)
+target_cells = meta[RNA_snn_res.0.2%in%c(0)&CellType%in%c('Ependymal')&UMAP_2>2]$cellID
+
+gene = 'CA2'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'CA2', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+CA2 = tmp1
+
+gene = 'CA12'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp2 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'CA12', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+CA12 = tmp2
+
+
+plot_grid(tmp1, tmp2,ncol = 2)
+
+#pdf('~/Project/Organoid/figure/to_pub/fig2/BRC_markers_UMAP.pdf',6,3.5)
+plot_grid(tmp1, tmp2, ncol = 2)
+#dev.off()
+
+
+
+gene = 'APOD'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+tmp5 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'APOD', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+APOD = tmp5
+
+
+target_cells = meta[RNA_snn_res.0.2%in%c(0,4,6)&CellType%in%c('Ependymal','BRC')][UMAP_2>2|UMAP_2<(-2)]$cellID
+gene = 'IGFBP7'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+IGFBP7 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'IGFBP7', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+
+gene = 'PARK7'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+PARK7 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+#xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'PARK7', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+
+
+
+gene = 'SERPINF1'
+cellsReduction$expr = exprMatrix[gene,rownames(cellsReduction)]
+
+target = exprMatrix[gene, target_cells]
+target = sort(target)
+
+non_target = exprMatrix[gene, !colnames(exprMatrix)%in%target_cells]
+non_target = sort(non_target, decreasing = T)
+
+SERPINF1 = ggplot(cellsReduction[c(names(non_target),names(target)),],
+              aes(x=UMAP_1,y=UMAP_2,col=expr))+ #xlim(c(-10,7.5))+
+    geom_point(size=1)+scale_color_gradient(low = 'lightgrey', high = '#FF4500') +
+    my_theme+ labs(title = 'SERPINF1', x = 'UMAP1', y = 'UMAP2')+theme(legend.position = 'none')
+```
+```{r,fig.width=7.5,fig.height=5}
+plot_grid(APOD,CA2,CA12,IGFBP7,PARK7,SERPINF1,ncol = 3)
+
+fd = plot_grid(APOD,CA2,CA12,IGFBP7,PARK7,SERPINF1,ncol = 3)
+
+pdf('~/Project/Organoid/figure/In_paper/Supply_Fig/FigS3_ChP_proteins_in_IVD.pdf',7,4.8)
+fd
+dev.off()
+```
+
+
+```{r,fig.width=12,fig.height=18}
+
+
+fa = plot_grid(dataset, celltype, ncol = 2)
+fb = plot_grid(CPdataset, CPcelltype, ncol = 2, rel_widths = c(1,0.95))
+
+S3 = plot_grid(fa,fb,p1, ncol = 1,
+               rel_heights = c(0.5,0.5,1),
+               labels = c('A','B','C'), label_size = 25)
+S3
+
+pdf('~/Project/Organoid/figure/In_paper/Supply_Fig/FigS5_integration_of_IVD_and_hCOs.pdf',12,17)
+S3
+dev.off()
+```
+
+
+
+## FigS6: Comparison of apoptosis and cellular stress gene signatures between IVD-organoids and in vitro organoids.
+```{r}
+load('~/Project/Organoid/result/rdata/Mutiple_organoid_EN_and_RGC_matrix.RData')
+SC_organoid = readRDS('~/Project/Organoid/result/rdata/IVD_organoid_200_min_gene_20MT_Seurat_obj.rds')
+meta = SC_organoid@meta.data
+
+RG_cells = rownames(meta[grep('RG|AS',meta$CellType),])
+IVD.RG_mat = SC_organoid[,RG_cells]@assays$RNA@data
+dim(IVD.RG_mat)
+
+EN_cells = rownames(meta[grep('Neuron',meta$CellType),])
+IVD.EN_mat = SC_organoid[,EN_cells]@assays$RNA@data
+dim(IVD.EN_mat)
+
+plot.colors = pal_jama()(5)[-1]
+```
+
+### comparison of Dorsomedial telencephalon, midbrain and hippocampus markers
+```{r,fig.width=10,fig.height=5.5}
+common_genes = Reduce(intersect, list(rownames(Bhaduri.EN_mat),
+                                      rownames(IVD.EN_mat),
+                                      rownames(Giandomenico.EN_mat),
+                                      rownames(Velasco.EN_mat)))
+
+EN_mat = Reduce(cbind, list(Bhaduri.EN_mat[common_genes,],
+                            IVD.EN_mat[common_genes,],
+                            Giandomenico.EN_mat[common_genes,],
+                            Velasco.EN_mat[common_genes,]))
+
+
+EN_melt = reshape2::melt(as.matrix(EN_mat[rownames(EN_mat)%in% c('PGK1','ARCN1','GORASP2'),]))
+setDT(EN_melt)
+colnames(EN_melt) = c('gene_name','cellID','Expression')
+EN_melt$DataSet = 'IVD-organoids'
+EN_melt[cellID%in%colnames(Bhaduri.EN_mat)]$DataSet = 'Bhaduri et al.'
+EN_melt[cellID%in%colnames(Velasco.EN_mat)]$DataSet = 'Velasco et al.'
+EN_melt[cellID%in%colnames(Giandomenico.EN_mat)]$DataSet = 'Giandomenico et al.'
+
+EN_melt[,DataSet:=factor(DataSet, levels = c('Bhaduri et al.',
+                                               'Giandomenico et al.','Velasco et al.','IVD-organoids'))]
+
+
+comparison_list2 = list()
+for(i in unique(EN_melt$DataSet)[-2]){
+  comparison_list2[[i]] = c('IVD-organoids',i)
+}
+
+
+EN_melt[,gene_name:=factor(gene_name,levels = c('PGK1','ARCN1','GORASP2'))]
+EN_melt = EN_melt[order(gene_name)]
+
+
+PhCO <- ggpubr::ggviolin(EN_melt,
+                      x = 'DataSet', y = 'Expression',
+                 fill = 'DataSet', ylab = 'Relative expression',
+                 trim = T, title = '',xlab = '')+
+  geom_point(size=0.1,position="jitter", alpha=.75)+
+ stat_compare_means(comparisons = comparison_list2,
+                                label = 'p.signif') + 
+  facet_wrap(~gene_name,ncol = 3)+ scale_fill_manual(values = pal_jama()(5)[-1])+
+  my_theme + theme(legend.position = 'none',axis.text.x = element_text(size=16,angle = 40,vjust = 0.9,hjust = 0.9))
+```
+
+
+```{r,fig.width=14,fig.height=12}
+plot.colors = pal_jama()(6)[c(1:3,6,4,5)][c(4,6)]
+
+down_ChP = plot_grid(apoptosis,Hypoxia,Glycolysis,ER_stress,ncol = 2)
+down_ChP
+
+tmp <- plot_grid(down_ChP, p2, ncol = 2)
+tmp
+
+tmp <- plot_grid(PhCO,p2,ncol = 1,labels = c('A','B'), label_size = 25)
+
+S6 = plot_grid(tmp, down_ChP, ncol = 2, rel_widths = c(1,0.7),
+               labels = c('','C'),label_size = 25)
+S6
+
+pdf('~/Project/Organoid/figure/In_paper/Supply_Fig/FigS6_comparison_of_cell_stress_signature.pdf',14,11)
+S6
+dev.off()
+```
+
+## FigS7. Subtype analysis of Choroid plexus in IVD-organoids. There is some problems when combining FeaturePlot of Seurat
+```{r,fig.width=14,fig.height=10}
+clu_tsne = TSNEPlot(ChP, label = T)
+
+
+S7_1 = plot_grid(clu_tsne, go_bar, ncol = 1, labels = c('A','C'), label_size = 25)
+S7_1
+
+clu_dot <- DotPlot(ChP, features = unique(c('CXCL14','CLDN5',Dark_markers[-c(4,6,8,11)][c(1,3:5)],c('MT-ATP6','MT-CO1','MT-ND1'),
+                          Light_markers[-c(5,10:13)][c(1,5:8)],c('RSPH9','NPM1','CDK2AP2'))))+
+  labs(x = '', y = 'Cluster')+ my_theme + 
+  annotate('rect',xmin = 0, xmax = 8, ymax = -0.2,ymin=-0.3, fill = hue_pal()(2)[1])+
+  annotate('text',x=3,y = -0.1,label='Dark cells',size = 7) + 
+  annotate('rect',xmin = 8, xmax = 17, ymax = -0.2,ymin=-0.3, fill = hue_pal()(2)[2])+
+    annotate('text',x=11,y = -0.1,label='Light cells',size=7)+
+  theme(axis.text.x = element_text(size=15,angle = 45,vjust = 0.99,hjust = 0.99))
+
+
+S7_2 =  plot_grid(tsne_dot,clu_dot, ncol = 1, labels = c('B','D'), label_size = 25)
+
+S7 = plot_grid(S7_1,S7_2,ncol = 2, rel_widths = c(0.9,1))
+S7
+```
+
+```{r}
+pdf('~/Project/Organoid/figure/In_paper/Supply_Fig/FigS7_IVD_ChP_subtype_analysis.pdf',14,10)
+S7
+dev.off()
+```
